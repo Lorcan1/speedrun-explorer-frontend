@@ -1,13 +1,31 @@
 import { useState } from "react";
+import { useEffect } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
+import "./App.css";
+
+const URL = 'http://127.0.0.1:8000/fen_next_move';
 
 export default function App() {
-  // 1. State for the board (your working setup)
+
+  const [gameState, setGameState] = useState(null);
   const [game, setGame] = useState(new Chess());
-  
-  // 2. NEW: Dedicated state for the move history
   const [history, setHistory] = useState([]);
+
+  async function fetchNextMove(fen){
+    try{
+      const response = await fetch(`${URL}?fen=${encodeURIComponent(fen)}`);
+      const json = await response.json();
+      setGameState(json);
+      console.log(json);
+    } catch (err){
+      console.error("Failed to fetch next move:", err)
+    }
+  }
+
+  useEffect(() => {
+    fetchNextMove(game.fen());
+  }, [])
 
   function onPieceDrop({ sourceSquare, targetSquare }) {
     try {
@@ -20,11 +38,11 @@ export default function App() {
 
       if (move === null) return false;
 
-      // Update the board state
       setGame(gameCopy);
-      
-      // NEW: Update the history state with the move's notation (e.g., "e4", "Nf3")
+
       setHistory(prev => [...prev, move.san]);
+
+      fetchNextMove(gameCopy.fen());
 
       return true;
     } catch {
@@ -32,89 +50,102 @@ export default function App() {
     }
   }
 
-  // Format the history array into rows (White move, Black move)
   const moveRows = [];
   for (let i = 0; i < history.length; i += 2) {
     moveRows.push({
       number: Math.floor(i / 2) + 1,
       white: history[i],
-      black: history[i + 1] || "", 
+      black: history[i + 1] || "",
     });
   }
 
-  // Reset both the board and the history
   function resetGame() {
     setGame(new Chess());
-    setHistory([]); 
+    setHistory([]);
   }
 
   return (
-    <div style={{ 
-      display: "flex", 
-      flexDirection: "column", 
-      justifyContent: "center", 
-      alignItems: "center", 
-      marginTop: "30px", 
-      fontFamily: "sans-serif" 
-    }}>
-      
-      {/* Your exact working Board */}
-      <div style={{ width: "400px", height: "400px" }}>
-        <Chessboard 
-          options={{
-            position: game.fen(),
-            onPieceDrop: onPieceDrop,
-          }} 
-        />
-      </div>
+    <div className="app-container">
+      <div className="main-row">
 
-      {/* Move History Table */}
-      <div style={{ 
-        width: "400px", 
-        marginTop: "20px", 
-        maxHeight: "250px", 
-        overflowY: "auto", 
-        border: "1px solid #ccc", 
-        borderRadius: "4px" 
-      }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "center", fontSize: "14px" }}>
-          <thead style={{ position: "sticky", top: 0, backgroundColor: "#f8f9fa" }}>
-            <tr>
-              <th style={{ padding: "8px", borderBottom: "2px solid #ddd" }}>#</th>
-              <th style={{ padding: "8px", borderBottom: "2px solid #ddd" }}>White</th>
-              <th style={{ padding: "8px", borderBottom: "2px solid #ddd" }}>Black</th>
-            </tr>
-          </thead>
-          <tbody>
-            {moveRows.length === 0 ? (
-              <tr>
-                <td colSpan="3" style={{ padding: "12px", color: "#888" }}>Game start</td>
-              </tr>
-            ) : (
-              moveRows.map((row) => (
-                <tr key={row.number} style={{ backgroundColor: row.number % 2 === 0 ? "#fcfcfc" : "#fff" }}>
-                  <td style={{ padding: "6px", color: "#666" }}>{row.number}.</td>
-                  <td style={{ padding: "6px", fontWeight: "bold" }}>{row.white}</td>
-                  <td style={{ padding: "6px", fontWeight: "bold" }}>{row.black}</td>
+        {/* Your exact working Board */}
+        <div className="board-wrapper">
+          <Chessboard
+            options={{
+              position: game.fen(),
+              onPieceDrop: onPieceDrop,
+            }}
+          />
+        </div>
+
+        {/* Tables stacked to the right of the board */}
+        <div className="side-panel">
+
+          {/* Move History Table */}
+          <div className="move-history">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>White</th>
+                  <th>Black</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {moveRows.length === 0 ? (
+                  <tr className="empty-row">
+                    <td colSpan="3">Game start</td>
+                  </tr>
+                ) : (
+                  moveRows.map((row) => (
+                    <tr
+                      key={row.number}
+                      className={row.number % 2 === 0 ? "even-row" : "odd-row"}
+                    >
+                      <td className="move-number">{row.number}.</td>
+                      <td className="move-san">{row.white}</td>
+                      <td className="move-san">{row.black}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Next Moves Table */}
+          <div className="game-history">
+            <table>
+              <thead>
+                <tr>
+                  <th>Move</th>
+                  <th>Games</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!gameState?.next_moves || gameState.next_moves.length === 0 ? (
+                  <tr className="empty-row">
+                    <td colSpan="2">No games found</td>
+                  </tr>
+                ) : (
+                  gameState.next_moves.map((row, index) => (
+                    <tr
+                      key={row.san}
+                      className={index % 2 === 0 ? "even-row" : "odd-row"}
+                    >
+                      <td className="move-san">{row.san}</td>
+                      <td className="move-count">{row.count}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
       </div>
 
       {/* Reset Button */}
-      <button 
-        onClick={resetGame}
-        style={{ 
-          marginTop: "15px", 
-          padding: "8px 16px", 
-          cursor: "pointer", 
-          borderRadius: "4px", 
-          border: "1px solid #ccc", 
-          backgroundColor: "#fff" 
-        }}
-      >
+      <button className="reset-button" onClick={resetGame}>
         New Game
       </button>
     </div>
