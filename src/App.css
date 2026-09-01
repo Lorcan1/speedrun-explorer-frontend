@@ -1,10 +1,104 @@
+/* ==========================================================================
+   Theme variables — every color in this file is a var() reference so that
+   .app-container.dark below can override the whole palette in one place
+   instead of needing separate dark-mode rules scattered throughout.
+   ========================================================================== */
+:root {
+  --color-bg: #ffffff;
+  --color-text: #222222;
+  --color-text-muted: #666666;
+  --color-text-faint: #999999;
+
+  --color-panel-bg: #f8f9fa;
+  --color-panel-border: #cccccc;
+  --color-row-even: #fcfcfc;
+  --color-row-odd: #ffffff;
+  --color-hover: #eef3fb;
+
+  --color-button-bg: #ffffff;
+  --color-button-hover: #f0f0f0;
+  --color-button-border: #cccccc;
+
+  --color-highlight: #d6e4f7;
+  --color-focus: #8ab4f8;
+  --color-danger: #c0392b;
+  --color-chesscom: #4a7c3f;
+  --color-chesscom-hover: #3a6330;
+
+  --color-placeholder-bg: #eeeeee;
+  --color-placeholder-text: #999999;
+}
+
+html.dark {
+  --color-bg: #1a1d21;
+  --color-text: #e8e8e8;
+  --color-text-muted: #a0a0a0;
+  --color-text-faint: #777777;
+
+  --color-panel-bg: #24272c;
+  --color-panel-border: #3a3e44;
+  --color-row-even: #202327;
+  --color-row-odd: #24272c;
+  --color-hover: #2c3440;
+
+  --color-button-bg: #2a2d33;
+  --color-button-hover: #363a41;
+  --color-button-border: #3a3e44;
+
+  --color-highlight: #2f4a72;
+  --color-focus: #6ea8fe;
+  --color-danger: #e0685a;
+  --color-chesscom: #5c9950;
+  --color-chesscom-hover: #4a7c3f;
+
+  --color-placeholder-bg: #2a2d33;
+  --color-placeholder-text: #888888;
+}
+
+/* Reset the actual page box so there's no default browser margin/white
+   edge showing around .app-container, and make sure the page background
+   itself (not just the container) follows the theme. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background-color: var(--color-bg);
+  transition: background-color 0.15s ease;
+}
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
 .app-container {
+  position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
   margin-top: 30px;
+  padding-bottom: 30px;
   font-family: sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-toggle {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  padding: 6px 10px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  border: 1px solid var(--color-button-border);
+  background-color: var(--color-button-bg);
+}
+
+.theme-toggle:hover {
+  background-color: var(--color-button-hover);
 }
 
 .main-row {
@@ -17,8 +111,12 @@
 
 .board-wrapper {
   width: var(--board-size);
-  height: var(--board-size);
   max-width: 900px;
+}
+
+.board-wrapper > div:first-child {
+  width: 100%;
+  height: var(--board-size);
   max-height: 900px;
 }
 
@@ -27,16 +125,114 @@
   flex-direction: column;
   height: var(--board-size);
   max-height: 900px;
-  width: 260px;
+  width: clamp(260px, calc(var(--board-size) * 0.45), 400px);
   box-sizing: border-box;
 }
 
+/* ==========================================================================
+   Controls bar — sits below the whole board+tables row, centered under the
+   full layout width rather than tucked under just the board.
+   ========================================================================== */
+.controls-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: calc(900px + 20px + 400px);
+  margin-top: 16px;
+}
+
+.nav-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.nav-controls button {
+  padding: 6px 14px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid var(--color-button-border);
+  background-color: var(--color-button-bg);
+  color: var(--color-text);
+}
+
+.nav-controls button:hover:not(:disabled) {
+  background-color: var(--color-button-hover);
+}
+
+.nav-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.fen-display {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  width: min(100%, 480px);
+}
+
+.fen-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-family: "SF Mono", Consolas, Monaco, monospace;
+  font-size: 15px;
+  color: var(--color-text);
+  background-color: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border);
+  border-radius: 4px;
+}
+
+.fen-input:focus {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -1px;
+}
+
+.fen-copy-button {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid var(--color-button-border);
+  background-color: var(--color-button-bg);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.fen-copy-button:hover {
+  background-color: var(--color-button-hover);
+}
+
+.reset-button {
+  display: block;
+  margin: 14px auto 0;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid var(--color-button-border);
+  background-color: var(--color-button-bg);
+  color: var(--color-text);
+}
+
+.reset-button:hover {
+  background-color: var(--color-button-hover);
+}
+
+/* ==========================================================================
+   Move history + next-moves tables
+   ========================================================================== */
 .move-history,
 .game-history {
   width: 100%;
   height: 50%;
+  min-height: 0;
   overflow-y: auto;
-  border: 1px solid #ccc;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-panel-border);
   border-radius: 4px;
   box-sizing: border-box;
 }
@@ -46,35 +242,38 @@
   width: 100%;
   border-collapse: collapse;
   text-align: center;
-  font-size: 14px;
+  font-size: clamp(14px, calc(var(--board-size) * 0.028), 20px);
+  color: var(--color-text);
 }
 
 .move-history thead,
 .game-history thead {
   position: sticky;
   top: 0;
-  background-color: #f8f9fa;
+  z-index: 2;
+  background-color: var(--color-panel-bg);
 }
 
 .move-history th,
 .game-history th {
   padding: 8px;
-  border-bottom: 2px solid #ddd;
+  border-bottom: 2px solid var(--color-panel-border);
 }
 
 .move-history td,
 .game-history td {
   padding: 6px;
+  position: relative;
 }
 
 .move-history .empty-row td,
 .game-history .empty-row td {
   padding: 12px;
-  color: #888;
+  color: var(--color-text-muted);
 }
 
 .move-history .move-number {
-  color: #666;
+  color: var(--color-text-muted);
 }
 
 .move-history .move-san,
@@ -82,25 +281,191 @@
   font-weight: bold;
 }
 
+.move-history td.clickable {
+  cursor: pointer;
+}
+
+.move-history td.clickable:hover {
+  background-color: var(--color-hover);
+}
+
+.game-history tr.clickable {
+  cursor: pointer;
+}
+
+.game-history tr.clickable:hover {
+  background-color: var(--color-hover);
+}
+
+.move-history td.current-move {
+  background-color: var(--color-highlight);
+  border-radius: 3px;
+}
+
+.delete-move {
+  margin-left: 8px;
+  color: var(--color-danger);
+  font-weight: bold;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.move-history td.clickable:hover .delete-move {
+  opacity: 1;
+}
+
 .move-history tr.even-row,
 .game-history tr.even-row {
-  background-color: #fcfcfc;
+  background-color: var(--color-row-even);
 }
 
 .move-history tr.odd-row,
 .game-history tr.odd-row {
-  background-color: #fff;
+  background-color: var(--color-row-odd);
 }
 
-.reset-button {
-  margin-top: 15px;
-  padding: 8px 16px;
+/* ==========================================================================
+   Game endings section
+   ========================================================================== */
+.endings-section {
+  border-top: 2px solid var(--color-panel-border);
+}
+
+.ending-bucket + .ending-bucket {
+  border-top: 1px solid var(--color-panel-border);
+}
+
+.ending-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 0.85em;
+  font-weight: bold;
+  color: var(--color-text-muted);
+  background-color: var(--color-panel-bg);
+  text-transform: capitalize;
+}
+
+.ending-count {
+  color: var(--color-text-faint);
+  font-weight: normal;
+}
+
+.games-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: clamp(12px, calc(var(--board-size) * 0.024), 16px);
+  color: var(--color-text);
+}
+
+.game-row {
   cursor: pointer;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  background-color: #fff;
+  border-bottom: 1px solid var(--color-panel-border);
 }
 
-.reset-button:hover {
-  background-color: #f0f0f0;
+.game-row:hover {
+  background-color: var(--color-hover);
+}
+
+.game-row td {
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+
+/* Note: the flex stacking lives on this inner .cell-stack div, NOT on
+   the <td> itself. Setting display:flex directly on a <td> overrides its
+   table-cell display, which knocks it out of normal table row alignment. */
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cell-stack-right {
+  align-items: flex-end;
+}
+
+.players-cell {
+  text-align: left;
+}
+
+.elo-cell {
+  text-align: right;
+  color: var(--color-text-faint);
+  font-size: 0.9em;
+}
+
+.player-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-cell {
+  font-weight: bold;
+  text-align: center;
+}
+
+.date-cell {
+  color: var(--color-text-faint);
+  text-align: center;
+}
+
+.col-thumb { width: 52px; }
+.col-players { width: 40%; }
+.col-elo { width: 18%; }
+.col-result { width: 18%; }
+.col-date { width: 12%; }
+
+.thumb-cell {
+  padding: 4px !important;
+}
+
+.thumb-wrapper {
+  position: relative;
+  width: 44px;
+}
+
+.thumb-img {
+  display: block;
+  width: 44px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.thumb-placeholder {
+  width: 44px;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-placeholder-bg);
+  color: var(--color-placeholder-text);
+  border-radius: 3px;
+  font-size: 0.75em;
+}
+
+.chesscom-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 15px;
+  height: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-chesscom);
+  color: #ffffff;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  border: 1.5px solid var(--color-bg);
+}
+
+.chesscom-badge:hover {
+  background-color: var(--color-chesscom-hover);
 }
