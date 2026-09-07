@@ -3,13 +3,16 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import "./App.css";
 
-const URL = 'http://127.0.0.1:8000/fen_next_move';
+const API_URL = 'http://127.0.0.1:8000/fen_next_move';
+const GAMES_API_URL = 'http://127.0.0.1:8000/fen_games';
+const FILTER_OPTIONS_API_URL = 'http://127.0.0.1:8000/filter_options';
 const START_FEN = new Chess().fen();
 
 // Extracts the video ID from either "youtube.com/watch?v=ID" or
 // "youtu.be/ID?t=123" style URLs, so we can build a thumbnail image URL
 // without needing a YouTube API key.
 function getYouTubeId(url) {
+  if (!url) return null;
   try {
     const u = new URL(url);
     if (u.hostname.includes("youtu.be")) {
@@ -36,7 +39,34 @@ export default function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const [gameState, setGameState] = useState(null);
+  const [gamesAtPosition, setGamesAtPosition] = useState({ games: [], total_count: 0, has_more: false });
   const [fenCopied, setFenCopied] = useState(false);
+
+  // --- Filter state ---
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedVideos, setSelectedVideos] = useState([]);
+  const [selectedSeries, setSelectedSeries] = useState([]);
+  const [selectedSpeedrunners, setSelectedSpeedrunners] = useState([]);
+  const [videoSearch, setVideoSearch] = useState("");
+  const [seriesSearch, setSeriesSearch] = useState("");
+  const [speedrunnerSearch, setSpeedrunnerSearch] = useState("");
+  // Rating filters
+  const [speedrunnerRatingMin, setSpeedrunnerRatingMin] = useState("");
+  const [speedrunnerRatingMax, setSpeedrunnerRatingMax] = useState("");
+  const [opponentRatingMin, setOpponentRatingMin] = useState("");
+  const [opponentRatingMax, setOpponentRatingMax] = useState("");
+  // Color filter: "all", "white", or "black"
+  const [selectedColor, setSelectedColor] = useState("all");
+  // Result filter: array of selected results
+  const [selectedResults, setSelectedResults] = useState([]);
+  // Date range filter
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const filterPanelRef = useRef(null);
+  // Suggestions from API
+  const [videoSuggestions, setVideoSuggestions] = useState([]);
+  const [seriesSuggestions, setSeriesSuggestions] = useState([]);
+  const [speedrunnerSuggestions, setSpeedrunnerSuggestions] = useState([]);
 
   // Dark mode, persisted across visits.
   const [darkMode, setDarkMode] = useState(() => {
@@ -57,6 +87,19 @@ export default function App() {
   // into view when the pointer moves — see the effect below.
   const currentMoveRef = useRef(null);
 
+  // Close filter panel when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target)) {
+        setFilterOpen(false);
+      }
+    }
+    if (filterOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [filterOpen]);
+
   const currentFen = positions[currentIndex].fen;
   const isAtLatest = currentIndex === positions.length - 1;
 
@@ -68,10 +111,40 @@ export default function App() {
     currentMoveRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [currentIndex]);
 
+  // --- Build filter query params ---
+  function buildFilterParams() {
+    const params = new URLSearchParams();
+
+    // Multi-select fields: append each value (backend accepts lists)
+    selectedVideos.forEach(v => params.append("video_titles", v));
+    selectedSeries.forEach(s => params.append("series_names", s));
+    selectedSpeedrunners.forEach(s => params.append("speedrunner_names", s));
+    selectedResults.forEach(r => params.append("result", r));
+
+    console.log("buildFilterParams:", params.toString());
+
+    // Rating ranges
+    if (speedrunnerRatingMin) params.set("min_elo_speedrunner", speedrunnerRatingMin);
+    if (speedrunnerRatingMax) params.set("max_elo_speedrunner", speedrunnerRatingMax);
+    if (opponentRatingMin) params.set("min_elo_opponent", opponentRatingMin);
+    if (opponentRatingMax) params.set("max_elo_opponent", opponentRatingMax);
+
+    // Color filter
+    if (selectedColor !== "all") params.set("speedrun_player_colour_filter", selectedColor);
+
+    // Date range
+    if (dateFrom) params.set("min_game_date", dateFrom);
+    if (dateTo) params.set("max_game_date", dateTo);
+
+    return params;
+  }
+
   // --- Fetch backend suggestions for whatever position is currently displayed ---
   async function fetchNextMove(fen) {
     try {
-      const response = await fetch(`${URL}?fen=${encodeURIComponent(fen)}`);
+      const params = buildFilterParams();
+      params.set("fen", fen);
+      const response = await fetch(`${API_URL}?${params.toString()}`);
       const json = await response.json();
       setGameState(json);
     } catch (err) {
@@ -82,7 +155,89 @@ export default function App() {
   useEffect(() => {
     fetchNextMove(currentFen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFen]);
+  }, [currentFen, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+      speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
+      selectedColor, dateFrom, dateTo]);
+
+  // --- Fetch games at the current position (debounced) ---
+  async function fetchGamesAtPosition(fen, page = 1, limit = 25) {
+    try {
+      const params = buildFilterParams();
+      params.set("fen", fen);
+      params.set("page", page.toString());
+      params.set("limit", limit.toString());
+      const response = await fetch(`${GAMES_API_URL}?${params.toString()}`);
+      const json = await response.json();
+      setGamesAtPosition(json);
+    } catch (err) {
+      console.error("Failed to fetch games at position:", err);
+    }
+  }
+
+  useEffect(() => {
+    console.log("Filter changed - selectedSeries:", selectedSeries, "selectedVideos:", selectedVideos);
+    const timer = setTimeout(() => {
+      fetchGamesAtPosition(currentFen);
+    }, 500);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFen, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+      speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
+      selectedColor, dateFrom, dateTo]);
+
+  // --- Fetch filter options (autocomplete suggestions) ---
+  async function fetchFilterOptions(colType, search, setSuggestions) {
+    if (!search.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      const params = buildFilterParams();
+      params.set("col_type", colType);
+      params.set("search", search);
+      params.set("limit", "10");
+      const response = await fetch(`${FILTER_OPTIONS_API_URL}?${params.toString()}`);
+      const json = await response.json();
+      setSuggestions(json.options || json || []);
+    } catch (err) {
+      console.error(`Failed to fetch filter options for ${colType}:`, err);
+      setSuggestions([]);
+    }
+  }
+
+  // Debounced fetch for video suggestions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchFilterOptions("video_title", videoSearch, setVideoSuggestions);
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+      speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
+      selectedColor, dateFrom, dateTo]);
+
+  // Debounced fetch for series suggestions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchFilterOptions("series", seriesSearch, setSeriesSuggestions);
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seriesSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+      speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
+      selectedColor, dateFrom, dateTo]);
+
+  // Debounced fetch for speedrunner suggestions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchFilterOptions("speedrunner", speedrunnerSearch, setSpeedrunnerSuggestions);
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speedrunnerSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+      speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
+      selectedColor, dateFrom, dateTo]);
 
   // --- Making a move ---
   // Shared by both drag-and-drop (onPieceDrop) and clicking a suggested
@@ -134,7 +289,7 @@ export default function App() {
   }
 
   // Keyboard support: left/right arrows step one move at a time,
-  // Home/End jump to the start/latest position.
+  // up/down and Home/End jump to the start/latest position.
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === "ArrowLeft") {
@@ -143,10 +298,10 @@ export default function App() {
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         goForward();
-      } else if (e.key === "Home") {
+      } else if (e.key === "ArrowDown" || e.key === "Home") {
         e.preventDefault();
         goToStart();
-      } else if (e.key === "End") {
+      } else if (e.key === "ArrowUp" || e.key === "End") {
         e.preventDefault();
         goToEnd();
       }
@@ -181,6 +336,50 @@ export default function App() {
         setTimeout(() => setFenCopied(false), 1500);
       })
       .catch((err) => console.error("Failed to copy FEN:", err));
+  }
+
+  // --- Filter logic ---
+  // Backend handles filtering, so filteredGames = allGames
+  const allGames = gamesAtPosition.games || [];
+  const filteredGames = allGames;
+
+  // Filter out already-selected items from suggestions
+  const filteredVideoSuggestions = videoSuggestions.filter(v => !selectedVideos.includes(v));
+  const filteredSeriesSuggestions = seriesSuggestions.filter(s => !selectedSeries.includes(s));
+  const filteredSpeedrunnerSuggestions = speedrunnerSuggestions.filter(s => !selectedSpeedrunners.includes(s));
+
+  const hasActiveFilters = selectedVideos.length > 0 || selectedSeries.length > 0 || selectedSpeedrunners.length > 0 ||
+    speedrunnerRatingMin || speedrunnerRatingMax || opponentRatingMin || opponentRatingMax ||
+    selectedColor !== "all" || selectedResults.length > 0 || dateFrom || dateTo;
+
+  const activeFilterCount = selectedVideos.length + selectedSeries.length + selectedSpeedrunners.length +
+    (speedrunnerRatingMin || speedrunnerRatingMax ? 1 : 0) +
+    (opponentRatingMin || opponentRatingMax ? 1 : 0) +
+    (selectedColor !== "all" ? 1 : 0) +
+    selectedResults.length +
+    (dateFrom || dateTo ? 1 : 0);
+
+  function clearAllFilters() {
+    setSelectedVideos([]);
+    setSelectedSeries([]);
+    setSelectedSpeedrunners([]);
+    setVideoSearch("");
+    setSeriesSearch("");
+    setSpeedrunnerSearch("");
+    setSpeedrunnerRatingMin("");
+    setSpeedrunnerRatingMax("");
+    setOpponentRatingMin("");
+    setOpponentRatingMax("");
+    setSelectedColor("all");
+    setSelectedResults([]);
+    setDateFrom("");
+    setDateTo("");
+  }
+
+  function toggleResult(result) {
+    setSelectedResults(arr =>
+      arr.includes(result) ? arr.filter(r => r !== result) : [...arr, result]
+    );
   }
 
   // --- Build move-pair rows for the table from positions (skipping the
@@ -301,15 +500,18 @@ export default function App() {
                 <tr>
                   <th>Move</th>
                   <th>Games</th>
+                  <th className="watch-col"></th>
                 </tr>
               </thead>
               <tbody>
                 {!gameState?.next_moves || gameState.next_moves.length === 0 ? (
                   <tr className="empty-row">
-                    <td colSpan="2">No games found</td>
+                    <td colSpan="3">No games found</td>
                   </tr>
                 ) : (
-                  gameState.next_moves.map((row, index) => (
+                  [...gameState.next_moves]
+                    .sort((a, b) => b.count - a.count)
+                    .map((row, index) => (
                     <tr
                       key={row.san}
                       className={
@@ -320,6 +522,20 @@ export default function App() {
                     >
                       <td className="move-san">{row.san}</td>
                       <td className="move-count">{row.count}</td>
+                      <td className="watch-cell">
+                        {row.count === 1 && row.games?.[0]?.youtube_url && (
+                          <span
+                            className="watch-btn"
+                            title="Watch on YouTube"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(row.games[0].youtube_url, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            &#9654;
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -369,10 +585,13 @@ export default function App() {
                                       src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
                                       alt={`${whiteName} vs ${blackName} thumbnail`}
                                       loading="lazy"
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling?.style && (e.target.nextSibling.style.display = 'flex');
+                                      }}
                                     />
-                                  ) : (
-                                    <div className="thumb-placeholder">&#9654;</div>
-                                  )}
+                                  ) : null}
+                                  <div className="thumb-placeholder" style={videoId ? {display: 'none'} : {}}>&#9654;</div>
                                   {g.chesscom_url && (
                                     <span
                                       className="chesscom-badge"
@@ -400,7 +619,9 @@ export default function App() {
                                 </div>
                               </td>
                               <td className="result-cell">{g.result}</td>
-                              <td className="date-cell">{g.game_date}</td>
+                              <td className="date-cell">{g.game_date}
+                                
+                              </td>
                             </tr>
                           );
                         })}
@@ -413,26 +634,346 @@ export default function App() {
           </div>
 
         </div>
-      </div>
 
-      {/* Controls sit below the whole board+tables row, not just the board */}
-      <div className="controls-bar">
-        <div className="nav-controls">
-          <button onClick={goToStart} disabled={currentIndex === 0} title="Start (Home)">
-            |&lt;
+        {/* Navigation controls - vertical strip */}
+        <div className="nav-controls-vertical">
+          <button onClick={goToStart} disabled={currentIndex === 0} title="First move (Down)">
+            ⏮
           </button>
-          <button onClick={goBack} disabled={currentIndex === 0} title="Back (\u2190)">
-            &lt;
+          <button onClick={goBack} disabled={currentIndex === 0} title="Previous (←)">
+            ◀
           </button>
-          <button onClick={goForward} disabled={isAtLatest} title="Forward (\u2192)">
-            &gt;
+          <button onClick={goForward} disabled={isAtLatest} title="Next (→)">
+            ▶
           </button>
-          <button onClick={goToEnd} disabled={isAtLatest} title="End (End)">
-            &gt;|
+          <button onClick={goToEnd} disabled={isAtLatest} title="Last move (Up)">
+            ⏭
+          </button>
+          <button className="reset-btn" onClick={resetGame} title="New Game">
+            ↺
           </button>
         </div>
+      </div>
 
-        <div className="fen-display">
+      {/* Games at Position Table */}
+      <div className="games-at-position" ref={filterPanelRef}>
+        {/* Filter Panel - positioned to the left, bottom touching table */}
+        {filterOpen && (
+          <div className="filter-panel">
+            <div className="filter-section">
+              <label className="filter-label">Video</label>
+              <div className="filter-chips">
+                {selectedVideos.map(v => (
+                  <span key={v} className="filter-chip">
+                    {v}
+                    <button onClick={() => setSelectedVideos(arr => arr.filter(x => x !== v))}>&times;</button>
+                  </span>
+                ))}
+              </div>
+              <div className="filter-search-wrapper">
+                <input
+                  type="text"
+                  className="filter-search"
+                  placeholder="Search videos..."
+                  value={videoSearch}
+                  onChange={e => setVideoSearch(e.target.value)}
+                />
+                {videoSearch && (
+                  <button className="filter-search-clear" onClick={() => setVideoSearch("")}>&times;</button>
+                )}
+              </div>
+              {videoSearch && filteredVideoSuggestions.length > 0 && (
+                <ul className="filter-suggestions">
+                  {filteredVideoSuggestions.slice(0, 10).map(v => (
+                    <li key={v} onClick={() => { setSelectedVideos(arr => [...arr, v]); setVideoSearch(""); }}>
+                      {v}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Series</label>
+              <div className="filter-chips">
+                {selectedSeries.map(s => (
+                  <span key={s} className="filter-chip">
+                    {s}
+                    <button onClick={() => setSelectedSeries(arr => arr.filter(x => x !== s))}>&times;</button>
+                  </span>
+                ))}
+              </div>
+              <div className="filter-search-wrapper">
+                <input
+                  type="text"
+                  className="filter-search"
+                  placeholder="Search series..."
+                  value={seriesSearch}
+                  onChange={e => setSeriesSearch(e.target.value)}
+                />
+                {seriesSearch && (
+                  <button className="filter-search-clear" onClick={() => setSeriesSearch("")}>&times;</button>
+                )}
+              </div>
+              {seriesSearch && filteredSeriesSuggestions.length > 0 && (
+                <ul className="filter-suggestions">
+                  {filteredSeriesSuggestions.slice(0, 10).map(s => (
+                    <li key={s} onClick={() => { setSelectedSeries(arr => [...arr, s]); setSeriesSearch(""); }}>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Speedrunner</label>
+              <div className="filter-chips">
+                {selectedSpeedrunners.map(s => (
+                  <span key={s} className="filter-chip">
+                    {s}
+                    <button onClick={() => setSelectedSpeedrunners(arr => arr.filter(x => x !== s))}>&times;</button>
+                  </span>
+                ))}
+              </div>
+              <div className="filter-search-wrapper">
+                <input
+                  type="text"
+                  className="filter-search"
+                  placeholder="Search speedrunners..."
+                  value={speedrunnerSearch}
+                  onChange={e => setSpeedrunnerSearch(e.target.value)}
+                />
+                {speedrunnerSearch && (
+                  <button className="filter-search-clear" onClick={() => setSpeedrunnerSearch("")}>&times;</button>
+                )}
+              </div>
+              {speedrunnerSearch && filteredSpeedrunnerSuggestions.length > 0 && (
+                <ul className="filter-suggestions">
+                  {filteredSpeedrunnerSuggestions.slice(0, 10).map(s => (
+                    <li key={s} onClick={() => { setSelectedSpeedrunners(arr => [...arr, s]); setSpeedrunnerSearch(""); }}>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Speedrunner Rating</label>
+              <div className="filter-range">
+                <input
+                  type="number"
+                  className="filter-range-input"
+                  placeholder="Min"
+                  min="0"
+                  max="4000"
+                  value={speedrunnerRatingMin}
+                  onChange={e => setSpeedrunnerRatingMin(e.target.value.replace(/\D/g, ""))}
+                />
+                <span className="filter-range-sep">-</span>
+                <input
+                  type="number"
+                  className="filter-range-input"
+                  placeholder="Max"
+                  min="0"
+                  max="4000"
+                  value={speedrunnerRatingMax}
+                  onChange={e => setSpeedrunnerRatingMax(e.target.value.replace(/\D/g, ""))}
+                />
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Opponent Rating</label>
+              <div className="filter-range">
+                <input
+                  type="number"
+                  className="filter-range-input"
+                  placeholder="Min"
+                  min="0"
+                  max="4000"
+                  value={opponentRatingMin}
+                  onChange={e => setOpponentRatingMin(e.target.value.replace(/\D/g, ""))}
+                />
+                <span className="filter-range-sep">-</span>
+                <input
+                  type="number"
+                  className="filter-range-input"
+                  placeholder="Max"
+                  min="0"
+                  max="4000"
+                  value={opponentRatingMax}
+                  onChange={e => setOpponentRatingMax(e.target.value.replace(/\D/g, ""))}
+                />
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Color</label>
+              <div className="filter-toggle-group">
+                <button
+                  className={"filter-toggle" + (selectedColor === "all" ? " active" : "")}
+                  onClick={() => setSelectedColor("all")}
+                >
+                  All
+                </button>
+                <button
+                  className={"filter-toggle" + (selectedColor === "white" ? " active" : "")}
+                  onClick={() => setSelectedColor("white")}
+                >
+                  White
+                </button>
+                <button
+                  className={"filter-toggle" + (selectedColor === "black" ? " active" : "")}
+                  onClick={() => setSelectedColor("black")}
+                >
+                  Black
+                </button>
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Result</label>
+              <div className="filter-toggle-group">
+                <button
+                  className={"filter-toggle" + (selectedResults.includes("1-0") ? " active" : "")}
+                  onClick={() => toggleResult("1-0")}
+                >
+                  Win
+                </button>
+                <button
+                  className={"filter-toggle" + (selectedResults.includes("0-1") ? " active" : "")}
+                  onClick={() => toggleResult("0-1")}
+                >
+                  Loss
+                </button>
+                <button
+                  className={"filter-toggle" + (selectedResults.includes("1/2-1/2") ? " active" : "")}
+                  onClick={() => toggleResult("1/2-1/2")}
+                >
+                  Draw
+                </button>
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Date</label>
+              <div className="filter-range">
+                <input
+                  type="date"
+                  className="filter-date-input"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                />
+                <span className="filter-range-sep">-</span>
+                <input
+                  type="date"
+                  className="filter-date-input"
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {hasActiveFilters && (
+              <button className="filter-clear-all" onClick={clearAllFilters}>
+                Clear all filters
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="games-at-position-table-wrapper">
+          <table className="games-at-position-table">
+            <thead>
+              <tr>
+                <th className="gap-col-thumb">
+                  <button
+                    className={"filter-btn" + (hasActiveFilters ? " active" : "")}
+                    title="Filter games"
+                    onClick={() => setFilterOpen(o => !o)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                    </svg>
+                    {hasActiveFilters && (
+                      <span className="filter-badge">{activeFilterCount}</span>
+                    )}
+                  </button>
+                </th>
+                <th className="gap-col-video">Video</th>
+                <th className="gap-col-series">Series</th>
+                <th className="gap-col-speedrunner">Speedrunner</th>
+                <th className="gap-col-rating">Rating</th>
+                <th className="gap-col-color">Color</th>
+                <th className="gap-col-result">Result</th>
+                <th className="gap-col-date">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredGames.map((game, index) => {
+                const videoId = getYouTubeId(game.youtube_url);
+                return (
+                  <tr
+                    key={game.id}
+                    className={(index % 2 === 0 ? "even-row" : "odd-row") + " game-row"}
+                    onClick={() => window.open(game.youtube_url, "_blank", "noopener,noreferrer")}
+                    title="Watch on YouTube"
+                  >
+                    <td className="gap-thumb-cell">
+                      <div className="thumb-wrapper">
+                        {videoId ? (
+                          <img
+                            className="thumb-img"
+                            src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                            alt={game.video_title}
+                            loading="lazy"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling?.style && (e.target.nextSibling.style.display = 'flex');
+                            }}
+                          />
+                        ) : null}
+                        <div className="thumb-placeholder" style={videoId ? {display: 'none'} : {}}>&#9654;</div>
+                        {game.chesscom_url && (
+                          <span
+                            className="chesscom-badge"
+                            title="View on Chess.com"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(game.chesscom_url, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            &#9823;
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="gap-video-cell">{game.video_title}</td>
+                    <td className="gap-series-cell">{game.series}</td>
+                    <td className="gap-speedrunner-cell">{game.speedrunner}</td>
+                    <td className="gap-rating-cell">
+                      {game.speedrunner_elo} vs {game.opponent_elo}
+                    </td>
+                    <td className="gap-color-cell">
+                      <span className={`color-icon ${game.speedrunner_colour}`}>
+                        {game.speedrunner_colour === "white" ? "♔" : "♚"}
+                      </span>
+                    </td>
+                    <td className="gap-result-cell">{game.result}</td>
+                    <td className="gap-date-cell">{game.game_date}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Controls sit below the whole board+tables row */}
+      <div className="controls-bar">
+1        <div className="fen-display">
           <input
             type="text"
             className="fen-input"
@@ -444,10 +985,6 @@ export default function App() {
             {fenCopied ? "Copied!" : "Copy FEN"}
           </button>
         </div>
-
-        <button className="reset-button" onClick={resetGame}>
-          New Game
-        </button>
       </div>
     </div>
   );
