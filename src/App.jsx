@@ -39,8 +39,17 @@ export default function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const [gameState, setGameState] = useState(null);
-  const [gamesAtPosition, setGamesAtPosition] = useState({ games: [], total_count: 0, has_more: false });
+  const [gamesAtPosition, setGamesAtPosition] = useState({ games: [], total_games: 0 });
   const [fenCopied, setFenCopied] = useState(false);
+  const [boardOrientation, setBoardOrientation] = useState("white");
+
+  // --- Pagination state ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(25);
+
+  // --- Sorting state ---
+  const [sortColumn, setSortColumn] = useState("");
+  const [sortDirection, setSortDirection] = useState("asc");
 
   // --- Filter state ---
   const [filterOpen, setFilterOpen] = useState(false);
@@ -57,8 +66,10 @@ export default function App() {
   const [opponentRatingMax, setOpponentRatingMax] = useState("");
   // Color filter: "all", "white", or "black"
   const [selectedColor, setSelectedColor] = useState("all");
-  // Result filter: array of selected results
+  // Result filter: array of selected results (game outcome: 1-0, 0-1, 1/2-1/2)
   const [selectedResults, setSelectedResults] = useState([]);
+  // Speedrunner result filter: array of w, l, d
+  const [selectedSpeedrunnerResults, setSelectedSpeedrunnerResults] = useState([]);
   // Date range filter
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -120,6 +131,7 @@ export default function App() {
     selectedSeries.forEach(s => params.append("series_names", s));
     selectedSpeedrunners.forEach(s => params.append("speedrunner_names", s));
     selectedResults.forEach(r => params.append("result", r));
+    selectedSpeedrunnerResults.forEach(r => params.append("speedrunner_result", r));
 
     console.log("buildFilterParams:", params.toString());
 
@@ -155,17 +167,18 @@ export default function App() {
   useEffect(() => {
     fetchNextMove(currentFen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFen, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+  }, [currentFen, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults, selectedSpeedrunnerResults,
       speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
       selectedColor, dateFrom, dateTo]);
 
   // --- Fetch games at the current position (debounced) ---
-  async function fetchGamesAtPosition(fen, page = 1, limit = 25) {
+  async function fetchGamesAtPosition(fen, page = 1, limit = 25, sort = "") {
     try {
       const params = buildFilterParams();
       params.set("fen", fen);
       params.set("page", page.toString());
       params.set("limit", limit.toString());
+      if (sort) params.set("sort", sort);
       const response = await fetch(`${GAMES_API_URL}?${params.toString()}`);
       const json = await response.json();
       setGamesAtPosition(json);
@@ -174,15 +187,25 @@ export default function App() {
     }
   }
 
+  // Reset to page 1 when filters or position change
   useEffect(() => {
-    console.log("Filter changed - selectedSeries:", selectedSeries, "selectedVideos:", selectedVideos);
+    setCurrentPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFen, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults, selectedSpeedrunnerResults,
+      speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
+      selectedColor, dateFrom, dateTo]);
+
+  // Fetch games when page, filters, sort, or position change
+  useEffect(() => {
+    console.log("Fetching games - page:", currentPage, "sort:", sortColumn, sortDirection);
+    const sortParam = sortColumn ? (sortDirection === "desc" ? `-${sortColumn}` : sortColumn) : "";
     const timer = setTimeout(() => {
-      fetchGamesAtPosition(currentFen);
+      fetchGamesAtPosition(currentFen, currentPage, itemsPerPage, sortParam);
     }, 500);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFen, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+  }, [currentFen, currentPage, itemsPerPage, sortColumn, sortDirection, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults, selectedSpeedrunnerResults,
       speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
       selectedColor, dateFrom, dateTo]);
 
@@ -213,7 +236,7 @@ export default function App() {
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+  }, [videoSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults, selectedSpeedrunnerResults,
       speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
       selectedColor, dateFrom, dateTo]);
 
@@ -224,7 +247,7 @@ export default function App() {
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seriesSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+  }, [seriesSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults, selectedSpeedrunnerResults,
       speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
       selectedColor, dateFrom, dateTo]);
 
@@ -235,7 +258,7 @@ export default function App() {
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speedrunnerSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults,
+  }, [speedrunnerSearch, selectedVideos, selectedSeries, selectedSpeedrunners, selectedResults, selectedSpeedrunnerResults,
       speedrunnerRatingMin, speedrunnerRatingMax, opponentRatingMin, opponentRatingMax,
       selectedColor, dateFrom, dateTo]);
 
@@ -350,13 +373,14 @@ export default function App() {
 
   const hasActiveFilters = selectedVideos.length > 0 || selectedSeries.length > 0 || selectedSpeedrunners.length > 0 ||
     speedrunnerRatingMin || speedrunnerRatingMax || opponentRatingMin || opponentRatingMax ||
-    selectedColor !== "all" || selectedResults.length > 0 || dateFrom || dateTo;
+    selectedColor !== "all" || selectedResults.length > 0 || selectedSpeedrunnerResults.length > 0 || dateFrom || dateTo;
 
   const activeFilterCount = selectedVideos.length + selectedSeries.length + selectedSpeedrunners.length +
     (speedrunnerRatingMin || speedrunnerRatingMax ? 1 : 0) +
     (opponentRatingMin || opponentRatingMax ? 1 : 0) +
     (selectedColor !== "all" ? 1 : 0) +
     selectedResults.length +
+    selectedSpeedrunnerResults.length +
     (dateFrom || dateTo ? 1 : 0);
 
   function clearAllFilters() {
@@ -372,6 +396,7 @@ export default function App() {
     setOpponentRatingMax("");
     setSelectedColor("all");
     setSelectedResults([]);
+    setSelectedSpeedrunnerResults([]);
     setDateFrom("");
     setDateTo("");
   }
@@ -380,6 +405,67 @@ export default function App() {
     setSelectedResults(arr =>
       arr.includes(result) ? arr.filter(r => r !== result) : [...arr, result]
     );
+  }
+
+  function toggleSpeedrunnerResult(result) {
+    setSelectedSpeedrunnerResults(arr =>
+      arr.includes(result) ? arr.filter(r => r !== result) : [...arr, result]
+    );
+  }
+
+  function handleSort(column) {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(d => d === "asc" ? "desc" : "asc");
+    } else {
+      // New column, start with ascending
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+    setCurrentPage(1); // Reset to first page when sorting
+  }
+
+  function getSortIndicator(column) {
+    if (sortColumn !== column) return null;
+    return sortDirection === "asc" ? " ▲" : " ▼";
+  }
+
+  // --- Pagination logic ---
+  const totalCount = gamesAtPosition.total_games || 0;
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+
+  function getPageNumbers() {
+    const pages = [];
+    const windowSize = 2; // pages on each side of current
+
+    // Always show page 1
+    pages.push(1);
+
+    // Calculate window around current page
+    const windowStart = Math.max(2, currentPage - windowSize);
+    const windowEnd = Math.min(totalPages - 1, currentPage + windowSize);
+
+    // Add ellipsis after page 1 if needed
+    if (windowStart > 2) {
+      pages.push("...");
+    }
+
+    // Add pages in window
+    for (let i = windowStart; i <= windowEnd; i++) {
+      pages.push(i);
+    }
+
+    // Add ellipsis before last page if needed
+    if (windowEnd < totalPages - 1) {
+      pages.push("...");
+    }
+
+    // Always show last page (if more than 1 page)
+    if (totalPages > 1) {
+      pages.push(totalPages);
+    }
+
+    return pages;
   }
 
   // --- Build move-pair rows for the table from positions (skipping the
@@ -413,6 +499,7 @@ export default function App() {
             options={{
               position: currentFen,
               onPieceDrop: onPieceDrop,
+              boardOrientation: boardOrientation,
             }}
           />
         </div>
@@ -649,8 +736,11 @@ export default function App() {
           <button onClick={goToEnd} disabled={isAtLatest} title="Last move (Up)">
             ⏭
           </button>
-          <button className="reset-btn" onClick={resetGame} title="New Game">
+          <button className="reset-btn" onClick={resetGame} disabled={positions.length === 1} title="New Game">
             ↺
+          </button>
+          <button onClick={() => setBoardOrientation(o => o === "white" ? "black" : "white")} title="Flip Board">
+            ⇅
           </button>
         </div>
       </div>
@@ -665,7 +755,7 @@ export default function App() {
               <div className="filter-chips">
                 {selectedVideos.map(v => (
                   <span key={v} className="filter-chip">
-                    {v}
+                    <span className="filter-chip-text">{v}</span>
                     <button onClick={() => setSelectedVideos(arr => arr.filter(x => x !== v))}>&times;</button>
                   </span>
                 ))}
@@ -685,7 +775,7 @@ export default function App() {
               {videoSearch && filteredVideoSuggestions.length > 0 && (
                 <ul className="filter-suggestions">
                   {filteredVideoSuggestions.slice(0, 10).map(v => (
-                    <li key={v} onClick={() => { setSelectedVideos(arr => [...arr, v]); setVideoSearch(""); }}>
+                    <li key={v} title={v} onClick={() => { setSelectedVideos(arr => [...arr, v]); setVideoSearch(""); }}>
                       {v}
                     </li>
                   ))}
@@ -698,7 +788,7 @@ export default function App() {
               <div className="filter-chips">
                 {selectedSeries.map(s => (
                   <span key={s} className="filter-chip">
-                    {s}
+                    <span className="filter-chip-text">{s}</span>
                     <button onClick={() => setSelectedSeries(arr => arr.filter(x => x !== s))}>&times;</button>
                   </span>
                 ))}
@@ -718,7 +808,7 @@ export default function App() {
               {seriesSearch && filteredSeriesSuggestions.length > 0 && (
                 <ul className="filter-suggestions">
                   {filteredSeriesSuggestions.slice(0, 10).map(s => (
-                    <li key={s} onClick={() => { setSelectedSeries(arr => [...arr, s]); setSeriesSearch(""); }}>
+                    <li key={s} title={s} onClick={() => { setSelectedSeries(arr => [...arr, s]); setSeriesSearch(""); }}>
                       {s}
                     </li>
                   ))}
@@ -731,7 +821,7 @@ export default function App() {
               <div className="filter-chips">
                 {selectedSpeedrunners.map(s => (
                   <span key={s} className="filter-chip">
-                    {s}
+                    <span className="filter-chip-text">{s}</span>
                     <button onClick={() => setSelectedSpeedrunners(arr => arr.filter(x => x !== s))}>&times;</button>
                   </span>
                 ))}
@@ -751,7 +841,7 @@ export default function App() {
               {speedrunnerSearch && filteredSpeedrunnerSuggestions.length > 0 && (
                 <ul className="filter-suggestions">
                   {filteredSpeedrunnerSuggestions.slice(0, 10).map(s => (
-                    <li key={s} onClick={() => { setSelectedSpeedrunners(arr => [...arr, s]); setSpeedrunnerSearch(""); }}>
+                    <li key={s} title={s} onClick={() => { setSelectedSpeedrunners(arr => [...arr, s]); setSpeedrunnerSearch(""); }}>
                       {s}
                     </li>
                   ))}
@@ -810,7 +900,7 @@ export default function App() {
             </div>
 
             <div className="filter-section">
-              <label className="filter-label">Color</label>
+              <label className="filter-label">Speedrunner Colour</label>
               <div className="filter-toggle-group">
                 <button
                   className={"filter-toggle" + (selectedColor === "all" ? " active" : "")}
@@ -834,23 +924,47 @@ export default function App() {
             </div>
 
             <div className="filter-section">
-              <label className="filter-label">Result</label>
+              <label className="filter-label">Game Result</label>
               <div className="filter-toggle-group">
                 <button
                   className={"filter-toggle" + (selectedResults.includes("1-0") ? " active" : "")}
                   onClick={() => toggleResult("1-0")}
                 >
-                  Win
+                  1-0
                 </button>
                 <button
                   className={"filter-toggle" + (selectedResults.includes("0-1") ? " active" : "")}
                   onClick={() => toggleResult("0-1")}
                 >
-                  Loss
+                  0-1
                 </button>
                 <button
                   className={"filter-toggle" + (selectedResults.includes("1/2-1/2") ? " active" : "")}
                   onClick={() => toggleResult("1/2-1/2")}
+                >
+                  Draw
+                </button>
+              </div>
+            </div>
+
+            <div className="filter-section">
+              <label className="filter-label">Speedrunner Result</label>
+              <div className="filter-toggle-group">
+                <button
+                  className={"filter-toggle" + (selectedSpeedrunnerResults.includes("win") ? " active" : "")}
+                  onClick={() => toggleSpeedrunnerResult("win")}
+                >
+                  Win
+                </button>
+                <button
+                  className={"filter-toggle" + (selectedSpeedrunnerResults.includes("loss") ? " active" : "")}
+                  onClick={() => toggleSpeedrunnerResult("loss")}
+                >
+                  Loss
+                </button>
+                <button
+                  className={"filter-toggle" + (selectedSpeedrunnerResults.includes("draw") ? " active" : "")}
+                  onClick={() => toggleSpeedrunnerResult("draw")}
                 >
                   Draw
                 </button>
@@ -902,13 +1016,23 @@ export default function App() {
                     )}
                   </button>
                 </th>
-                <th className="gap-col-video">Video</th>
-                <th className="gap-col-series">Series</th>
-                <th className="gap-col-speedrunner">Speedrunner</th>
-                <th className="gap-col-rating">Rating</th>
+                <th className="gap-col-video sortable" onClick={() => handleSort("video_title")}>
+                  Video{getSortIndicator("video_title")}
+                </th>
+                <th className="gap-col-series sortable" onClick={() => handleSort("series")}>
+                  Series{getSortIndicator("series")}
+                </th>
+                <th className="gap-col-speedrunner sortable" onClick={() => handleSort("speedrunner")}>
+                  Speedrunner{getSortIndicator("speedrunner")}
+                </th>
+                <th className="gap-col-rating sortable" onClick={() => handleSort("speedrunner_elo")}>
+                  Rating{getSortIndicator("speedrunner_elo")}
+                </th>
                 <th className="gap-col-color">Color</th>
                 <th className="gap-col-result">Result</th>
-                <th className="gap-col-date">Date</th>
+                <th className="gap-col-date sortable" onClick={() => handleSort("game_date")}>
+                  Date{getSortIndicator("game_date")}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -969,6 +1093,63 @@ export default function App() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button
+              className="pagination-btn"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              title="First page"
+            >
+              «
+            </button>
+            <button
+              className="pagination-btn"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              title="Previous page"
+            >
+              ‹
+            </button>
+
+            {getPageNumbers().map((page, idx) =>
+              page === "..." ? (
+                <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
+              ) : (
+                <button
+                  key={page}
+                  className={`pagination-btn${currentPage === page ? " active" : ""}`}
+                  onClick={() => setCurrentPage(page)}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              className="pagination-btn"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              title="Next page"
+            >
+              ›
+            </button>
+            <button
+              className="pagination-btn"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              title="Last page"
+            >
+              »
+            </button>
+
+            <span className="pagination-info">
+              {totalCount} games
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Controls sit below the whole board+tables row */}

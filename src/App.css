@@ -593,6 +593,17 @@ body {
 .gap-col-result { width: 8%; text-align: center; }
 .gap-col-date { width: 10%; }
 
+/* Sortable column headers */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.sortable:hover {
+  background-color: var(--color-button-hover);
+}
+
 /* Cell styles */
 .gap-thumb-cell {
   padding: 4px 10px !important;
@@ -758,6 +769,9 @@ html.dark .color-icon.black {
   background-color: var(--color-highlight);
   border-radius: 4px;
   max-width: 200px;
+}
+
+.filter-chip-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -956,4 +970,53 @@ html.dark .filter-date-input {
   background-color: var(--color-highlight);
   border-color: var(--color-focus);
   color: var(--color-text);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--color-text);
+  background-color: var(--color-button-bg);
+  border: 1px solid var(--color-button-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: var(--color-button-hover);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-btn.active {
+  background-color: var(--color-highlight);
+  border-color: var(--color-focus);
+  font-weight: 600;
+}
+
+.pagination-ellipsis {
+  padding: 0 4px;
+  color: var(--color-text-muted);
+}
+
+.pagination-info {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
