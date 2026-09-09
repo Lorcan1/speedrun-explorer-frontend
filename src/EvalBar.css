@@ -128,7 +128,9 @@
 
 .eval-bar {
   width: 24px;
-  height: 200px;
+  /* Match chessboard height (--board-size defined in .main-row) minus space for controls */
+  height: calc(var(--board-size) - 80px);
+  max-height: 820px;
   border-radius: 4px;
   overflow: hidden;
   display: flex;

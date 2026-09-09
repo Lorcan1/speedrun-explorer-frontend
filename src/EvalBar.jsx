@@ -11,7 +11,8 @@ const DEPTH_MODES = {
 const DEBOUNCE_MS = 300;
 
 // Parse UCI info line to extract evaluation
-function parseUciInfo(line) {
+// isWhiteToMove: Stockfish reports from side-to-move perspective, we normalize to White's perspective
+function parseUciInfo(line, isWhiteToMove) {
   const result = {
     depth: null,
     score: null,
@@ -32,12 +33,16 @@ function parseUciInfo(line) {
   const cpMatch = line.match(/\bscore cp (-?\d+)/);
   const mateMatch = line.match(/\bscore mate (-?\d+)/);
 
+  // Flip factor: Stockfish reports from side-to-move perspective
+  // We want White's perspective (positive = White winning)
+  const flip = isWhiteToMove ? 1 : -1;
+
   if (cpMatch) {
-    result.score = parseInt(cpMatch[1], 10) / 100; // Convert to pawns
+    result.score = (parseInt(cpMatch[1], 10) / 100) * flip;
   } else if (mateMatch) {
-    result.mate = parseInt(mateMatch[1], 10);
-    // Represent mate as a very high score
-    result.score = mateMatch[1] > 0 ? 100 : -100;
+    const mateIn = parseInt(mateMatch[1], 10) * flip;
+    result.mate = mateIn;
+    result.score = mateIn > 0 ? 100 : -100;
   }
 
   // Extract principal variation (best line)
@@ -87,6 +92,9 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
   const workerRef = useRef(null);
   const debounceRef = useRef(null);
   const settingsRef = useRef(null);
+  const currentFenRef = useRef(fen); // Track current FEN for side-to-move detection
+  const expectedAnalysisIdRef = useRef(0); // What analysis we're waiting for
+  const activeAnalysisIdRef = useRef(0); // What analysis is currently running
 
   // Persist depth mode
   useEffect(() => {
@@ -128,25 +136,21 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
     }
 
     let worker = null;
-    let blobUrl = null;
 
-    // Fetch stockfish.js and create a blob worker (avoids CORS issues)
+    // Load Stockfish from local files (public/stockfish/)
     async function initWorker() {
       try {
-        const response = await fetch(
-          "https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js"
-        );
-        if (!response.ok) throw new Error("Failed to fetch Stockfish");
-
-        const code = await response.text();
-        const blob = new Blob([code], { type: "application/javascript" });
-        blobUrl = URL.createObjectURL(blob);
-
-        worker = new Worker(blobUrl);
+        // Use local Stockfish 18 lite - standard chess, accurate evals
+        worker = new Worker("/stockfish/stockfish-18-lite-single.js");
 
         worker.onmessage = (e) => {
           const message = typeof e.data === "string" ? e.data : e.data?.toString();
           if (!message) return;
+
+          // Log engine version on startup
+          if (message.startsWith("id name")) {
+            console.log("Engine:", message);
+          }
 
           // Handle UCI ready
           if (message === "uciok") {
@@ -155,9 +159,17 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
             return;
           }
 
+          // Ignore stale messages from previous analysis
+          if (activeAnalysisIdRef.current !== expectedAnalysisIdRef.current) {
+            return;
+          }
+
           // Parse UCI info messages
           if (message.startsWith("info") && message.includes("score")) {
-            const parsed = parseUciInfo(message);
+            // Determine side to move from FEN (2nd field is 'w' or 'b')
+            const sideToMove = currentFenRef.current?.split(" ")[1];
+            const isWhiteToMove = sideToMove === "w";
+            const parsed = parseUciInfo(message, isWhiteToMove);
             if (parsed.depth !== null && parsed.multipv === 1) {
               setEvaluation((prev) => ({
                 ...prev,
@@ -206,9 +218,6 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
         worker.postMessage("quit");
         worker.terminate();
       }
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
     };
   }, [enabled]);
 
@@ -224,6 +233,9 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
         isAnalyzing: true,
         depth: 0,
       }));
+
+      // Mark this analysis as active - messages will only be processed if IDs match
+      activeAnalysisIdRef.current = expectedAnalysisIdRef.current;
 
       // Send UCI commands directly
       workerRef.current.postMessage("stop");
@@ -249,11 +261,17 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
       workerRef.current.postMessage("stop");
     }
 
-    // Reset to show we're analyzing new position
+    // Increment expected ID - any messages with old activeId will be ignored
+    expectedAnalysisIdRef.current += 1;
+
+    // Update FEN ref synchronously before analysis starts
+    currentFenRef.current = fen;
+
+    // Keep previous score/bar position, just show we're recalculating
     setEvaluation((prev) => ({
       ...prev,
-      isAnalyzing: true,
       depth: 0,
+      isAnalyzing: true,
     }));
 
     // Debounce new analysis
@@ -271,10 +289,12 @@ export default function EvalBar({ fen, enabled, onToggle, darkMode }) {
   // Determine who's winning based on evaluation
   const whitePercent = scoreToPercent(evaluation.score, evaluation.mate);
   const isWhiteWinning = whitePercent > 50;
-  const displayScore = formatScore(
-    evaluation.score,
-    evaluation.mate
-  );
+
+  // Show "..." when recalculating (depth 0), but keep bar at previous position
+  const isRecalculating = evaluation.isAnalyzing && evaluation.depth === 0;
+  const displayScore = isRecalculating
+    ? "..."
+    : formatScore(evaluation.score, evaluation.mate);
 
   return (
     <div className={`eval-container${darkMode ? " dark" : ""}`}>
