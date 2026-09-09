@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
+import EvalBar from "./EvalBar";
 import "./App.css";
 
 const API_URL = 'http://127.0.0.1:8000/fen_next_move';
@@ -93,6 +94,15 @@ export default function App() {
     // areas the container doesn't cover, etc.) rather than just the box.
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  // Eval bar toggle, persisted across visits.
+  const [evalEnabled, setEvalEnabled] = useState(() => {
+    return localStorage.getItem("chess-app-eval") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("chess-app-eval", evalEnabled ? "true" : "false");
+  }, [evalEnabled]);
 
   // Ref to whichever move cell is currently active, so we can scroll it
   // into view when the pointer moves — see the effect below.
@@ -493,6 +503,13 @@ export default function App() {
       </button>
 
       <div className="main-row">
+
+        <EvalBar
+          fen={currentFen}
+          enabled={evalEnabled}
+          onToggle={setEvalEnabled}
+          darkMode={darkMode}
+        />
 
         <div className="board-wrapper">
           <Chessboard
