@@ -1,0 +1,227 @@
+/* ==========================================================================
+   Eval Bar Component Styles
+   ========================================================================== */
+
+.eval-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 50px;
+}
+
+.eval-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Toggle switch */
+.eval-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.eval-toggle input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-focus);
+}
+
+.eval-toggle-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+/* Settings button */
+.eval-settings-wrapper {
+  position: relative;
+}
+
+.eval-settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-button-border);
+  border-radius: 4px;
+  background: var(--color-button-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.eval-settings-btn:hover {
+  background: var(--color-button-hover);
+  color: var(--color-text);
+}
+
+/* Settings dropdown */
+.eval-settings-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 160px;
+  padding: 8px 0;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+
+.eval-settings-title {
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.eval-settings-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.1s ease;
+}
+
+.eval-settings-option:hover {
+  background: var(--color-hover);
+}
+
+.eval-settings-option.active {
+  background: var(--color-highlight);
+}
+
+.eval-settings-option .option-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.eval-settings-option .option-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* Eval bar visualization */
+.eval-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.eval-bar {
+  width: 24px;
+  height: 200px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+  border: 1px solid var(--color-panel-border);
+  background: #333;
+}
+
+.eval-bar-white {
+  background: #f0f0f0;
+  transition: height 0.3s ease;
+}
+
+.eval-bar-black {
+  background: #333;
+  transition: height 0.3s ease;
+}
+
+/* Score display */
+.eval-score {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 40px;
+  text-align: center;
+}
+
+.eval-score.white {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.eval-score.black {
+  background: #333;
+  color: #f0f0f0;
+}
+
+/* Depth indicator */
+.eval-depth {
+  font-size: 10px;
+  color: var(--color-text-faint);
+  font-family: monospace;
+}
+
+.eval-analyzing {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Loading and error states */
+.eval-loading,
+.eval-error {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 8px;
+  max-width: 60px;
+  word-wrap: break-word;
+}
+
+.eval-error {
+  color: var(--color-danger);
+}
+
+/* Dark mode adjustments */
+.eval-container.dark .eval-bar {
+  border-color: var(--color-panel-border);
+}
+
+.eval-container.dark .eval-bar-white {
+  background: #e8e8e8;
+}
+
+.eval-container.dark .eval-bar-black {
+  background: #2a2d33;
+}
+
+.eval-container.dark .eval-score.white {
+  background: #e8e8e8;
+  color: #1a1d21;
+}
+
+.eval-container.dark .eval-score.black {
+  background: #2a2d33;
+  color: #e8e8e8;
+}
+
+.eval-container.dark .eval-settings-dropdown {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
